@@ -1,0 +1,8 @@
+nltk~=3.5
+numpy~=1.19.4
+gensim~=3.8.3
+torch~=1.7.1
+transformers~=4.1.1
+requests~=2.25.1
+jusText~=2.2.0
+scipy~=1.5.4
