@@ -1,42 +1,70 @@
 import numpy as np
 import nltk
+from transformers import AutoModel, AutoTokenizer
 from vectorizer import Vectorizer
 from scipy import spatial
 from collections import Counter
+from sklearn.cluster import SpectralClustering
+from sklearn.cluster import KMeans
+from sklearn.cluster import DBSCAN
+from sklearn.cluster import AffinityPropagation
 
 sent_tokenizer = nltk.data.load('tokenizers/punkt/portuguese.pickle')
+import matplotlib.pyplot as plt
 
 filename = 'listacompleta'
 vectorizer = Vectorizer()
+from sentence_transformers import SentenceTransformer, util
 
+model = SentenceTransformer('distiluse-base-multilingual-cased-v1')
+
+
+# model = AutoModel.from_pretrained('neuralmind/bert-base-portuguese-cased')
+# import torch
+# tokenizer = AutoTokenizer.from_pretrained('neuralmind/bert-base-portuguese-cased', do_lower_case=False)
 
 def similarity_matrix(sentences):
-    n = len(sentences)
-    sentence_matrix = np.zeros((n, n))
-    vectorizer.bert(sentences)
-    vectors_bert = vectorizer.vectors
-    for i in range(n-1):
-        for j in range(i, n-1):
-            sentence_matrix[i][j] = 1 / (1 + spatial.distance.cosine(vectors_bert[i], vectors_bert[j]))
-            sentence_matrix[j][i] = sentence_matrix[i][j]
-    return sentence_matrix
+    ## with tokenizer
+    # n = len(sentences)
+    # cosine_scores = np.zeros((n, n))
+    # vectorizer.bert(sentences)
+    # vectors_bert = vectorizer.vectors
+    # for i in range(n-1):
+    #     for j in range(i, n-1):
+    #         cosine_scores[i][j] = spatial.distance.cosine(vectors_bert[i], vectors_bert[j])
+    #         cosine_scores[j][i] = cosine_scores[i][j]
+
+    ## with sentence_transformers
+    embeddings = model.encode(sentences, convert_to_tensor=True)
+    cosine_scores = abs(util.pytorch_cos_sim(embeddings, embeddings).cpu())
+
+    # plt.figure(figsize=(30, 30))
+    # plt.imshow(cosine_scores)
+    #
+    # plt.axline((17,17.5),(17.5,0))
+    # plt.colorbar()
+    # plt.show()
+    return cosine_scores
 
 
 def rank_matrix(sim_matrix):
     n = len(sim_matrix)
     window = (min(n, 11))
     rank = np.zeros((n, n))
+    # gargalo
     for i in range(n):
         for j in range(i, n):
-            r1 = max(0, i - int(window / 2))
-            r2 = min(n - 1, i + int(window / 2))
-            c1 = max(0, j - int(window / 2))
-            c2 = min(n - 1, j + int(window / 2))
+            r1 = max(0, i - int(window + 1))
+            r2 = min(n - 1, i + int(window - 1))
+            c1 = max(0, j - int(window + 1))
+            c2 = min(n - 1, j + int(window - 1))
             sublist = sim_matrix[r1:(r2 + 1), c1:(c2 + 1)].flatten()
             lowlist = [x for x in sublist if x < sim_matrix[i][j]]
             rank[i][j] = len(lowlist) / ((r2 - r1 + 1) * (c2 - c1 + 1))
             rank[j][i] = rank[i][j]
-
+    # plt.imshow(rank)
+    # plt.colorbar()
+    # plt.show()
     # Reynars maximization algorithm
     # Kibado: https://github.com/intfloat/uts/blob/master/uts/c99.py
     sm = np.zeros((n, n))
@@ -89,9 +117,8 @@ def rank_matrix(sim_matrix):
     for i in range(1, len(dgrad) - 1):
         smooth_dgrad[i] = (dgrad[i - 1] + 2 * dgrad[i] + dgrad[i + 1]) / 4.0
     dgrad = smooth_dgrad
-
     avg, stdev = np.average(dgrad), np.std(dgrad)
-    cutoff = avg + 2 * stdev
+    cutoff = avg + 1.2 * stdev
     assert (len(idx) == len(dgrad))
     above_cutoff_idx = [i for i in range(len(dgrad)) if dgrad[i] >= cutoff]
     if len(above_cutoff_idx) == 0:
@@ -106,7 +133,7 @@ def rank_matrix(sim_matrix):
             if 0 <= j < n and j != i and ret[j] == 1:
                 ret[i] = 0
                 break
-    return [1] + ret[:-1]
+    return [1] + ret[:-1], rank
     # return rank
 
 
@@ -157,12 +184,12 @@ def create_label(archive):
     for sent in text:
 
         if sent[0] != "¶":
-            topic += sent
+            topic += (sent + " ")
         else:
             topic_list.append(topic)
             topic = ""
             topic += sent.replace("¶ ", '')
-    file = open("labeld/labeled_" + archive, "w", encoding="utf8")
+    file = open("labeled/labeled_" + archive, "w", encoding="utf8")
     for topic in topic_list:
         words_in_topic = topic.split(" ")
         words_in_topic = (t for t in words_in_topic if t.lower() not in stopwords and t.isalnum())
@@ -171,6 +198,57 @@ def create_label(archive):
         file.write('\n' + topic + '\n\n')
     print(archive + " rotulado com sucesso.")
 
+def plot(clusters, rank_sim_matrix, sentences, reference,archive):
+    hypothetical = []
+    for i in range(len(clusters)):
+        if clusters[i] == 1:
+            hypothetical.append(i)
+    f, (ax1, ax2, ax3) = plt.subplots(1, 3)
+    plt.rc('font', size=20)
+    f.set_figheight(10)
+    f.set_figwidth(30)
+    ax1.set_title("similarity matrix")
+    ax1.imshow(rank_sim_matrix, cmap='gray')
+
+    ax2.set_title("hypothetical breakpoints")
+    ax2.imshow(rank_sim_matrix, cmap='gray')
+    anterior = 0
+    for i in hypothetical:
+        if i > 0:
+            rectangle = plt.Rectangle((anterior - 0.5, anterior - 0.5), i - anterior, i - anterior, fc=(0, 0, 0, 0),
+                                      ec="red", lw=2)
+            ax2.add_patch(rectangle)
+            anterior = i
+    rectangle = plt.Rectangle((anterior - 0.5, anterior - 0.5), len(sentences), len(sentences), fc=(0, 0, 0, 0),
+                              ec="red", lw=2)
+    ax2.add_patch(rectangle)
+    ax3.set_title("original breakpoints")
+    im = ax3.imshow(rank_sim_matrix, cmap='gray')
+
+    anterior = 0
+    for i in hypothetical:
+        if i>0:
+            rectangle = plt.Rectangle((anterior-0.5, anterior-0.5), i-anterior, i-anterior, fc=(0,0,0,0), ec="red",lw=2)
+            ax3.add_patch(rectangle)
+            anterior=i
+    rectangle = plt.Rectangle((anterior - 0.5, anterior - 0.5), len(sentences), len(sentences), fc=(0, 0, 0, 0), ec="red",lw=2)
+    ax3.add_patch(rectangle)
+    anterior = 0
+    for i in reference:
+        if i > 0:
+            rectangle = plt.Rectangle((anterior - 0.5, anterior - 0.5), i - anterior, i - anterior, fc=(0, 0, 0, 0),
+                                      ec="magenta", lw=2)
+            ax3.add_patch(rectangle)
+            anterior = i
+    rectangle = plt.Rectangle((anterior - 0.5, anterior - 0.5), len(sentences), len(sentences), fc=(0, 0, 0, 0),
+                              lw=2,
+                              ec="magenta", )
+    ax3.add_patch(rectangle)
+    cb_ax = f.add_axes([0.93, 0.1, 0.02, 0.8])
+    cbar = f.colorbar(im, cax=cb_ax)
+    plt.title(archive)
+    plt.savefig("renders/" + archive + ".png")
+    plt.show()
 
 def segment_topics(archive):
     cont = 0
@@ -180,19 +258,22 @@ def segment_topics(archive):
     file.close()
     text = sent_tokenizer.tokenize(text)
     sentences = []
-    sentences1 = []
+    reference = []
+    contador = 0
     for sent in text:
         sent = sent.strip()
         sent = sent.replace('\n', ' ')
-        sentences1.append(sent)
-        sent = sent.replace("¶ ", '')
+        if "¶ " in sent:
+            reference.append(contador)
+            sent = sent.replace("¶ ", '')
         sentences.append(sent)
+
+        contador += 1
     n = len(sentences)
+    print(reference)
     sent_sim_matrix = similarity_matrix(sentences)
-    clusters = rank_matrix(sent_sim_matrix)
-    print(sent_sim_matrix)
-    print(archive)
-    print(clusters)
+    clusters, rank_sim_matrix = rank_matrix(sent_sim_matrix)
+
     topic_n = 0
     topic_list = [sentences[0] + '\n']
 
@@ -206,3 +287,16 @@ def segment_topics(archive):
     for topic in topic_list:
         file.write('¶ ' + topic + "\n")
     file.close()
+    plot(clusters, rank_sim_matrix, sentences, reference,archive)
+    # print("Reynar: ", clusters)
+    # print("Spectral Clustering: ", SpectralClustering(14,affinity='precomputed').fit_predict(sent_sim_matrix))
+    # eigen_values, eigen_vectors = np.linalg.eigh(sent_sim_matrix)
+    # print("KMeans: ", KMeans(n_clusters=14, init='k-means++').fit_predict(eigen_vectors[:, 2:4]))
+    # print("DBSCAN: ",DBSCAN(min_samples=1).fit_predict(sent_sim_matrix))
+    # clusters=AffinityPropagation(affinity='precomputed').fit_predict(sent_sim_matrix)
+    # print(sent_sim_matrix)
+    # print("Affinity Propagation:", clusters)
+    # topic_n = 0
+    # topic_list = [sentences[0] + '\n']
+
+

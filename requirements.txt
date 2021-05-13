@@ -6,3 +6,4 @@ transformers~=4.1.1
 requests~=2.25.1
 jusText~=2.2.0
 scipy~=1.5.4
+scikit-learn~=0.24.1

@@ -19,5 +19,5 @@ def label_all_segmented():
 
 if __name__ == '__main__':
     segment_all_texts()
-    # check_all_differences()
-    # label_all_segmented()
+    check_all_differences()
+    label_all_segmented()

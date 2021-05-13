@@ -3,6 +3,8 @@ import gensim
 import torch
 import transformers as ppb
 # Kibado: https://github.com/pdrm83/sent2vec/blob/master/sent2vec/vectorizer.py
+
+
 class Vectorizer:
     def __init__(self):
         self.vectors = []
