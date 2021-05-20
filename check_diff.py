@@ -1,10 +1,25 @@
 import nltk
+sent_tokenizer = nltk.data.load('tokenizers/punkt/portuguese.pickle')
 from nltk import segmentation
-from nltk.metrics import windowdiff
-import statistics
+# import nltk.tokenize.punkt as pkt
+# from nltk.metrics import windowdiff
+# import statistics
+# class CustomLanguageVars(pkt.PunktLanguageVars):
+#     _period_context_fmt = r"""
+#             \S*                          # some word material
+#             %(SentEndChars)s             # a potential sentence ending
+#             \s*                       #  <-- THIS is what I changed
+#             (?=(?P<after_tok>
+#                 %(NonWord)s              # either other punctuation
+#                 |
+#                 (?P<next_tok>\S+)     #  <-- Normally you would have \s+ here
+#             ))"""
+#
+#
+# sent_tokenizer = pkt.PunktSentenceTokenizer(lang_vars=CustomLanguageVars())
 
 def segmentation_difference(archive):
-    sent_tokenizer = nltk.data.load('tokenizers/punkt/portuguese.pickle')
+    # sent_tokenizer = nltk.data.load('tokenizers/punkt/portuguese.pickle')
     file = open("fulltexts/" + archive, 'r', encoding='utf8')
     ref_text = file.read()
     file.close()

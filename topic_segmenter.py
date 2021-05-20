@@ -1,49 +1,17 @@
 import numpy as np
 import nltk
-from transformers import AutoModel, AutoTokenizer
 from vectorizer import Vectorizer
-from scipy import spatial
-from collections import Counter
-from sklearn.cluster import SpectralClustering
-from sklearn.cluster import KMeans
-from sklearn.cluster import DBSCAN
-from sklearn.cluster import AffinityPropagation
-
 sent_tokenizer = nltk.data.load('tokenizers/punkt/portuguese.pickle')
 import matplotlib.pyplot as plt
-
-filename = 'listacompleta'
 vectorizer = Vectorizer()
 from sentence_transformers import SentenceTransformer, util
-
 model = SentenceTransformer('distiluse-base-multilingual-cased-v1')
 
 
-# model = AutoModel.from_pretrained('neuralmind/bert-base-portuguese-cased')
-# import torch
-# tokenizer = AutoTokenizer.from_pretrained('neuralmind/bert-base-portuguese-cased', do_lower_case=False)
-
 def similarity_matrix(sentences):
-    ## with tokenizer
-    # n = len(sentences)
-    # cosine_scores = np.zeros((n, n))
-    # vectorizer.bert(sentences)
-    # vectors_bert = vectorizer.vectors
-    # for i in range(n-1):
-    #     for j in range(i, n-1):
-    #         cosine_scores[i][j] = spatial.distance.cosine(vectors_bert[i], vectors_bert[j])
-    #         cosine_scores[j][i] = cosine_scores[i][j]
-
     ## with sentence_transformers
     embeddings = model.encode(sentences, convert_to_tensor=True)
     cosine_scores = abs(util.pytorch_cos_sim(embeddings, embeddings).cpu())
-
-    # plt.figure(figsize=(30, 30))
-    # plt.imshow(cosine_scores)
-    #
-    # plt.axline((17,17.5),(17.5,0))
-    # plt.colorbar()
-    # plt.show()
     return cosine_scores
 
 
@@ -170,35 +138,10 @@ class Region:
         self.best_pos = pos
 
 
-def create_label(archive):
-    file = open("stoplist_portugues.txt", 'r', encoding='utf8')
-    stopwords = file.read()
-    file.close()
-    file = open("segmented/segmented_" + archive, 'r', encoding='utf8')
-    text = file.read()
-    file.close()
-    text = sent_tokenizer.tokenize(text)
-    topic_list = []
-    topic = ""
-    text[0] = text[0].replace("¶ ", '')
-    for sent in text:
 
-        if sent[0] != "¶":
-            topic += (sent + " ")
-        else:
-            topic_list.append(topic)
-            topic = ""
-            topic += sent.replace("¶ ", '')
-    file = open("labeled/labeled_" + archive, "w", encoding="utf8")
-    for topic in topic_list:
-        words_in_topic = topic.split(" ")
-        words_in_topic = (t for t in words_in_topic if t.lower() not in stopwords and t.isalnum())
-        for w, v in Counter(words_in_topic).most_common(3):
-            file.write(w.upper() + ' ')
-        file.write('\n' + topic + '\n\n')
-    print(archive + " rotulado com sucesso.")
 
-def plot(clusters, rank_sim_matrix, sentences, reference,archive):
+
+def plot(clusters, rank_sim_matrix, sentences, reference, archive):
     hypothetical = []
     for i in range(len(clusters)):
         if clusters[i] == 1:
@@ -227,11 +170,13 @@ def plot(clusters, rank_sim_matrix, sentences, reference,archive):
 
     anterior = 0
     for i in hypothetical:
-        if i>0:
-            rectangle = plt.Rectangle((anterior-0.5, anterior-0.5), i-anterior, i-anterior, fc=(0,0,0,0), ec="red",lw=2)
+        if i > 0:
+            rectangle = plt.Rectangle((anterior - 0.5, anterior - 0.5), i - anterior, i - anterior, fc=(0, 0, 0, 0),
+                                      ec="red", lw=2)
             ax3.add_patch(rectangle)
-            anterior=i
-    rectangle = plt.Rectangle((anterior - 0.5, anterior - 0.5), len(sentences), len(sentences), fc=(0, 0, 0, 0), ec="red",lw=2)
+            anterior = i
+    rectangle = plt.Rectangle((anterior - 0.5, anterior - 0.5), len(sentences), len(sentences), fc=(0, 0, 0, 0),
+                              ec="red", lw=2)
     ax3.add_patch(rectangle)
     anterior = 0
     for i in reference:
@@ -247,33 +192,31 @@ def plot(clusters, rank_sim_matrix, sentences, reference,archive):
     cb_ax = f.add_axes([0.93, 0.1, 0.02, 0.8])
     cbar = f.colorbar(im, cax=cb_ax)
     plt.title(archive)
-    plt.savefig("renders/" + archive + ".png")
+    plt.savefig("renders/" + archive + "_new.png")
     plt.show()
 
+
 def segment_topics(archive):
-    cont = 0
-    cont += 1
+    cont = 1
     file = open("fulltexts/" + archive, 'r', encoding='utf8')
     text = file.read()
     file.close()
+    text = text.replace("\n\n", "\n")
     text = sent_tokenizer.tokenize(text)
     sentences = []
     reference = []
     contador = 0
     for sent in text:
-        sent = sent.strip()
         sent = sent.replace('\n', ' ')
         if "¶ " in sent:
             reference.append(contador)
             sent = sent.replace("¶ ", '')
         sentences.append(sent)
-
         contador += 1
     n = len(sentences)
-    print(reference)
+    print(n)
     sent_sim_matrix = similarity_matrix(sentences)
     clusters, rank_sim_matrix = rank_matrix(sent_sim_matrix)
-
     topic_n = 0
     topic_list = [sentences[0] + '\n']
 
@@ -287,7 +230,7 @@ def segment_topics(archive):
     for topic in topic_list:
         file.write('¶ ' + topic + "\n")
     file.close()
-    plot(clusters, rank_sim_matrix, sentences, reference,archive)
+    plot(clusters, rank_sim_matrix, sentences, reference, archive)
     # print("Reynar: ", clusters)
     # print("Spectral Clustering: ", SpectralClustering(14,affinity='precomputed').fit_predict(sent_sim_matrix))
     # eigen_values, eigen_vectors = np.linalg.eigh(sent_sim_matrix)
@@ -298,5 +241,3 @@ def segment_topics(archive):
     # print("Affinity Propagation:", clusters)
     # topic_n = 0
     # topic_list = [sentences[0] + '\n']
-
-
