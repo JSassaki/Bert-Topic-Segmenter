@@ -1,5 +1,7 @@
 import numpy as np
 import nltk
+import uts
+import time
 from vectorizer import Vectorizer
 sent_tokenizer = nltk.data.load('tokenizers/punkt/portuguese.pickle')
 import matplotlib.pyplot as plt
@@ -15,7 +17,7 @@ def similarity_matrix(sentences):
     return cosine_scores
 
 
-def rank_matrix(sim_matrix):
+def rank_matrix(sim_matrix,c):
     n = len(sim_matrix)
     window = (min(n, 11))
     rank = np.zeros((n, n))
@@ -86,7 +88,7 @@ def rank_matrix(sim_matrix):
         smooth_dgrad[i] = (dgrad[i - 1] + 2 * dgrad[i] + dgrad[i + 1]) / 4.0
     dgrad = smooth_dgrad
     avg, stdev = np.average(dgrad), np.std(dgrad)
-    cutoff = avg + 1.2 * stdev
+    cutoff = avg + float(c) * stdev
     assert (len(idx) == len(dgrad))
     above_cutoff_idx = [i for i in range(len(dgrad)) if dgrad[i] >= cutoff]
     if len(above_cutoff_idx) == 0:
@@ -141,7 +143,7 @@ class Region:
 
 
 
-def plot(clusters, rank_sim_matrix, sentences, reference, archive):
+def plot(clusters, rank_sim_matrix, sentences, reference, archive,c):
     hypothetical = []
     for i in range(len(clusters)):
         if clusters[i] == 1:
@@ -191,32 +193,49 @@ def plot(clusters, rank_sim_matrix, sentences, reference, archive):
     ax3.add_patch(rectangle)
     cb_ax = f.add_axes([0.93, 0.1, 0.02, 0.8])
     cbar = f.colorbar(im, cax=cb_ax)
-    plt.title(archive)
-    plt.savefig("renders/" + archive + "_new.png")
-    plt.show()
+    plt.title(archive+c)
+    plt.savefig("renders/" +c+"_"+ archive + ".png")
+    # plt.show()
 
 
-def segment_topics(archive):
+def segment_topics(archive,c):
+    startTime = time.time()
     cont = 1
-    file = open("fulltexts/" + archive, 'r', encoding='utf8')
+    file = open(archive, 'r', encoding='utf8')
     text = file.read()
     file.close()
+
     text = text.replace("\n\n", "\n")
     text = sent_tokenizer.tokenize(text)
     sentences = []
     reference = []
     contador = 0
+    # print(text)
     for sent in text:
         sent = sent.replace('\n', ' ')
-        if "¶ " in sent:
+        if "==========" in sent:
             reference.append(contador)
-            sent = sent.replace("¶ ", '')
+            sent = sent.replace("==========", '').strip()
         sentences.append(sent)
         contador += 1
+    del sentences[-1]
+    # print(sentences)
     n = len(sentences)
-    print(n)
+    # print(n)
     sent_sim_matrix = similarity_matrix(sentences)
-    clusters, rank_sim_matrix = rank_matrix(sent_sim_matrix)
+    clusters, rank_sim_matrix = rank_matrix(sent_sim_matrix,c)
+    # for c99
+    # sentences_clean=[]
+    # for s in sentences:
+    #     string=" "
+    #     words = nltk.word_tokenize(s)
+    #     words=[word.lower() for word in words if word.isalpha()]
+    #     sentences_clean.append(string.join(words))
+    # model = uts.C99(window=11)
+    # print(sentences_clean)
+    # clusters = model.segment(sentences_clean)
+    # print(len(sentences_clean))
+    # print(len(sentences))
     topic_n = 0
     topic_list = [sentences[0] + '\n']
 
@@ -226,14 +245,17 @@ def segment_topics(archive):
         else:
             topic_list.append(sentences[i] + '\n')
             topic_n += 1
-    file = open("segmented/segmented_" + archive, "w", encoding="utf8")
+    file = open(archive+"_segmented", "w", encoding="utf8")
     for topic in topic_list:
         file.write('¶ ' + topic + "\n")
     file.close()
-    plot(clusters, rank_sim_matrix, sentences, reference, archive)
+    executionTime = (time.time() - startTime)
+    print('Execution time in seconds: ' + str(executionTime))
+    return executionTime
+    # plot(clusters, rank_sim_matrix, sentences, reference, archive,c)
     # print("Reynar: ", clusters)
     # print("Spectral Clustering: ", SpectralClustering(14,affinity='precomputed').fit_predict(sent_sim_matrix))
-    # eigen_values, eigen_vectors = np.linalg.eigh(sent_sim_matrix)
+    # eigen_values, eigen_vectors = np.linalg.eigh(sent_sim_matrix)l
     # print("KMeans: ", KMeans(n_clusters=14, init='k-means++').fit_predict(eigen_vectors[:, 2:4]))
     # print("DBSCAN: ",DBSCAN(min_samples=1).fit_predict(sent_sim_matrix))
     # clusters=AffinityPropagation(affinity='precomputed').fit_predict(sent_sim_matrix)

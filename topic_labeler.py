@@ -3,10 +3,11 @@ from collections import Counter
 from nltk.corpus import stopwords
 from nltk.corpus import wordnet as wn
 import nltk
-import json
-import requests
 from conllu import parse
 from ufal.udpipe import Model, Pipeline, ProcessingError
+import time
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
 sent_tokenizer = nltk.data.load('tokenizers/punkt/portuguese.pickle')
 stopwords=stopwords.words('portuguese')
 accepted_pos = ['VERB', 'PROPN', 'NOUN', 'ADJ']
@@ -14,17 +15,26 @@ model = Model.load('models/portuguese-bosque-ud-2.5-191206.udpipe')
 pipeline = Pipeline(model, 'tokenize', Pipeline.DEFAULT,
                     Pipeline.DEFAULT, 'conllu')
 error = ProcessingError()
+file = open("blacklist", 'r', encoding='utf8')
+blacklist = file.read().split()
+file.close()
+
 
 def filter_meaningful_words(text):
-    ann = pipeline.process(text, error)
-    sentences = parse(ann)
+    sentences= sent_tokenizer.tokenize(text)
     word_list = []
     for sentence in sentences:
-        for word in sentence:
-            if word['form'] not in stopwords:
+        ann = pipeline.process(sentence, error)
+        udpipe_result=parse(ann)
+        for tokenlist in udpipe_result:
+            for word in tokenlist:
+                if word['form'] not in stopwords:
+                    if word['upos'] in accepted_pos:
+                        word_list.append(word['lemma'].lower())
+    for word in word_list:
+        if word in blacklist:
+            word_list.remove(word)
 
-                if word['upos'] in accepted_pos:
-                    word_list.append(word['lemma'])
     return word_list
 
 
@@ -46,34 +56,55 @@ def find_synonyms(word):
     for syn in wn.synsets(word, lang='por'):
         for lemm in syn.lemmas('por'):
             synlist.append(lemm.name())
-    return list(set(synlist))
+    # print(list(set(synlist)))
+    for syn in synlist:
+        if synlist.count(syn)>1:
+            synlist.remove(syn)
+    return synlist
 
 
-def common_words(text):
+def common_words(text,df):
+    # print(text)
     syn_dict = {}
     text = filter_meaningful_words(text)
+    print(text)
     word_counts = Counter(text)
     top_words = [word for word, count in word_counts.most_common(10)]
     [syn_dict.update({word: find_synonyms(word)}) for word in top_words]
+    # print(syn_dict)
     for item in syn_dict:
+        # print("getting syns for", item)
         contador = 0
         for w in syn_dict[item]:
             contador += word_counts[w]
+            if item != w:
+                del word_counts[w]
+                # print("deleting", w)
         if contador:
             word_counts[item] = contador
-    return [word for word, count in word_counts.most_common(3)]
+    # print(word_counts)
+    dict = {}
+    for w in top_words:
+        dict.update({w:df.at[w, 'TF-IDF']})
+    top_words_idf=[]
+    for i in sorted(dict.items(), key=lambda item: item[1], reverse=True):
+        top_words_idf.append(i[0])
+    number_keywords=int(len(text)/15)
+    if number_keywords < 3:
+        number_keywords=3
+    if number_keywords > 5:
+        number_keywords=5
+
+    return top_words_idf[:number_keywords]
 
 def create_label(archive):
-    # file = open("stoplist_portugues.txt", 'r', encoding='utf8')
-    # stopwords = file.read()
-    # file.close()
-    file = open("segmented/segmented_"+archive, 'r', encoding='utf8')
+    startTime = time.time()
+    file = open("segmented/novos/1.2_segmented_"+archive, 'r', encoding='utf8')
     text = file.read()
     file.close()
 
     text = text.replace("\n\n", "\n ")
-    text = sent_tokenizer.tokenize(text.lower())
-    print(text)
+    text = sent_tokenizer.tokenize(text)
     topic_list = []
     topic = ""
     text[0] = text[0].replace("¶ ", '')
@@ -87,14 +118,19 @@ def create_label(archive):
             topic = ""
             topic += sent.replace("¶ ", ' ')
     topic_list.append(topic)
-    print(topic_list)
-    file = open("labeled/labeled_" + archive, "w", encoding="utf8")
+    text_filtered=[]
     for topic in topic_list:
-        # words_in_topic = topic.split(" ")
-        # words_in_topic = [t for t in words_in_topic if t.lower() not in stopwords and t.isalnum()]
-        print(topic)
-        label = common_words(topic)
+        text_filtered.append(' '.join(filter_meaningful_words(topic)))
+    vectorizer = TfidfVectorizer(stop_words=stopwords,token_pattern=r"\S+")
+    vectors = vectorizer.fit_transform(text_filtered)
+    df = pd.DataFrame(vectors[0].T.todense(), index=vectorizer.get_feature_names(), columns=["TF-IDF"])
+    df = df.sort_values('TF-IDF', ascending=False)
+    file = open("labeled/tfidf/labeled_" + archive, "w+", encoding="utf8")
+    for topic in topic_list:
+        label = common_words(topic,df)
         for w in label:
             file.write(w.upper() + ' ')
         file.write('\n' + topic + '\n\n')
-    print(archive + " rotulado com sucesso.")
+    executionTime = (time.time() - startTime)
+    print('Execution time in seconds: ' + str(executionTime))
+    # print(archive + " rotulado com sucesso.")

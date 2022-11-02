@@ -18,36 +18,44 @@ from nltk import segmentation
 #
 # sent_tokenizer = pkt.PunktSentenceTokenizer(lang_vars=CustomLanguageVars())
 
-def segmentation_difference(archive):
+def segmentation_difference(archive,c):
     # sent_tokenizer = nltk.data.load('tokenizers/punkt/portuguese.pickle')
-    file = open("fulltexts/" + archive, 'r', encoding='utf8')
+    file = open(archive, 'r', encoding='utf8')
     ref_text = file.read()
     file.close()
+    ref_text = ref_text.replace("\n\n", "\n")
     ref_text = sent_tokenizer.tokenize(ref_text)
-    ref_sentences = []
-    for sent in ref_text:
-        sent = sent.strip()
-        sent = sent.replace('\n', ' ')
-        ref_sentences.append(sent)
-    file = open("segmented/segmented_" + archive, "r", encoding="utf8")
+    # print(ref_text)
+    del ref_text[-1]
+    # ref_sentences = []
+    # for sent in ref_text:
+    #     # sent = sent.strip()
+    #     sent = sent.replace('\n', ' ')
+    #     ref_sentences.append(sent)
+    file = open(archive+"_segmented", "r", encoding="utf8")
     hyp_text = file.read()
+    file.close()
+    hyp_text = hyp_text.replace("\n\n", "\n")
     hyp_text = sent_tokenizer.tokenize(hyp_text)
     hyp_sentences = []
     topics=0
+    # print(archive)
     for sent in hyp_text:
         sent = sent.strip()
         sent = sent.replace('\n', ' ')
         hyp_sentences.append(sent)
     ref_topic_list = []
-    for sent_n in range(0, len(ref_sentences)):
-        if ref_sentences[sent_n][0] != "¶":
+    for sent in ref_text:
+        sent = sent.replace('\n', ' ')
+        if not "==========" in sent:
+            sent=sent.replace("==========","")
             ref_topic_list.append(0)
         else:
             topics+=1
             ref_topic_list.append(1)
     hyp_topic_list = []
     mean=int(len(ref_topic_list)/topics+1)
-    print("Mean: " + str(mean))
+    # print("Mean: " + str(mean))
     for sent_n in range(0, len(hyp_sentences)):
         if hyp_sentences[sent_n][0] != "¶":
             hyp_topic_list.append(0)
@@ -61,7 +69,8 @@ def segmentation_difference(archive):
     false_negative = 0
     cont_topics_ref = 0
     cont_topics_hyp = 0
-
+    smallest=99
+    biggest=0
     for i in range(0, len(ref_topic_list)):
         if ref_topic_list[i] == 1:
             cont_topics_ref+=1
@@ -74,21 +83,42 @@ def segmentation_difference(archive):
             if hyp_topic_list[i] == 1:
                 cont_topics_hyp += 1
                 false_positive += 1
+    cont=1
+    media=0
+    # print(archive)
+    for i in hyp_topic_list[1:]:
+        if i:
+            if cont > biggest:
+                biggest=cont
+            if cont < smallest:
+                smallest=cont
+            media+=cont
+            cont=1
+        else:
+            cont+=1
+    if cont > biggest:
+        biggest = cont
+    if cont < smallest:
+        smallest = cont
+    # print(biggest, smallest)
 
-    print("Text: " + archive)
+    # print("Text: " + archive)
     precision = true_positive / (true_positive + false_positive)
     recall = true_positive / (true_positive + false_negative)
-    print("True Positives: "+ str(true_positive))
-    print("False Positives: " + str(false_positive))
-    print("False Negatives: " + str(false_negative))
-    print("Precision: " + '%.2f' % (precision * 100)+'%')
-    print("Recall: " + '%.2f' % (recall * 100)+'%')
-    print("F-score: " + '%.2f' % (200 * precision * recall / (precision + recall))+'%')
-    print("WindowDiff: "+'%.2f' % segmentation.windowdiff(seg_str1,seg_str2,int(mean/2)))
-    print("Pk: " + '%.2f' % segmentation.pk(seg_str1, seg_str2))
-    print("Number of topics in original: " + str(cont_topics_ref))
-    print("Number of topics in algorithm: " + str(cont_topics_hyp))
-    print(ref_topic_list)
-    print(hyp_topic_list)
-    print(len(hyp_topic_list))
-    print("\n")
+    # print("True Positives: "+ str(true_positive))
+    # print("False Positives: " + str(false_positive))
+    # print("False Negatives: " + str(false_negative))
+    # print("Precision: " + '%.2f' % (precision * 100)+'%')
+    # print("Recall: " + '%.2f' % (recall * 100)+'%')
+    # print("F-score: " + '%.2f' % (200 * precision * recall / (precision + recall))+'%')
+    # print("WindowDiff: "+'%.2f' % segmentation.windowdiff(seg_str1,seg_str2,int(mean/2)))
+    # print("Pk: " + '%.2f' % segmentation.pk(seg_str1, seg_str2))
+    # print("Number of topics in original: " + str(cont_topics_ref))
+    # print("Number of topics in algorithm: " + str(cont_topics_hyp))
+    # print(str(true_positive) +"\t"+ str(false_positive) +"\t"+ str(false_negative) +"\t"+ '%.2f' % (precision * 100)+'%' +"\t"+ '%.2f' % (recall * 100)+'%'+"\t"+ '%.2f' % (200 * precision * recall / (precision + recall))+'%'+"\t"+'%.2f' % segmentation.windowdiff(seg_str1,seg_str2,int(mean/2))+"\t"+ '%.2f' % segmentation.pk(seg_str1, seg_str2))
+    # print(ref_topic_list)
+    # print(hyp_topic_list)
+    # print(len(hyp_topic_list))
+    # print("\n")
+    return [precision, recall, 2 * precision * recall / (precision + recall),
+            segmentation.windowdiff(seg_str1, seg_str2, int(mean / 2)), segmentation.pk(seg_str1, seg_str2), biggest, smallest,media/cont_topics_hyp]
